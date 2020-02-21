@@ -21,7 +21,8 @@ class LUConv(nn.Module):
     def __init__(self, in_chan, out_chan, act):
         super(LUConv, self).__init__()
         self.conv1 = nn.Conv3d(in_chan, out_chan, kernel_size=3, padding=1)
-        self.bn1 = ContBatchNorm3d(out_chan)
+        #self.bn1 = ContBatchNorm3d(out_chan)
+        self.gn1 = nn.GroupNorm(8, out_chan)
 
         if act == 'relu':
             self.activation = nn.ReLU(out_chan)
@@ -33,7 +34,8 @@ class LUConv(nn.Module):
             raise
 
     def forward(self, x):
-        out = self.activation(self.bn1(self.conv1(x)))
+        #out = self.activation(self.bn1(self.conv1(x)))
+        out = self.activation(self.gn1(self.conv1(x)))
         return out
 
 

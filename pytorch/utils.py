@@ -7,6 +7,7 @@ import scipy
 import imageio
 import string
 import numpy as np
+import cv2
 from skimage.transform import resize
 try:  # SciPy >= 0.19
     from scipy.special import comb
@@ -62,14 +63,15 @@ def nonlinear_transformation(x, prob=0.5):
     if random.random() >= prob:
         return x
     points = [[0, 0], [random.random(), random.random()], [random.random(), random.random()], [1, 1]]
-    xpoints = [p[0] for p in points]
-    ypoints = [p[1] for p in points]
+    xpoints = sorted([p[0] for p in points])
+    ypoints = sorted([p[1] for p in points])
     xvals, yvals = bezier_curve(points, nTimes=100000)
-    if random.random() < 0.5:
+    '''if random.random() < 0.5:
         # Half change to get flip
         xvals = np.sort(xvals)
     else:
-        xvals, yvals = np.sort(xvals), np.sort(yvals)
+        xvals, yvals = np.sort(xvals), np.sort(yvals)'''
+    xvals, yvals = np.sort(xvals), np.sort(yvals)
     nonlinear_x = np.interp(x, xvals, yvals)
     return nonlinear_x
 
@@ -78,33 +80,33 @@ def local_pixel_shuffling(x, prob=0.5):
         return x
     image_temp = copy.deepcopy(x)
     orig_image = copy.deepcopy(x)
-    _, img_rows, img_cols, img_deps = x.shape
+    _, img_deps, img_cols, img_rows = x.shape
     num_block = 10000
     for _ in range(num_block):
-        block_noise_size_x = random.randint(1, img_rows//10)
-        block_noise_size_y = random.randint(1, img_cols//10)
-        block_noise_size_z = random.randint(1, img_deps//10)
+        block_noise_size_x = random.randint(1, img_rows//16)
+        block_noise_size_y = random.randint(1, img_cols//16)
+        block_noise_size_z = random.randint(1, img_deps//16)
         noise_x = random.randint(0, img_rows-block_noise_size_x)
         noise_y = random.randint(0, img_cols-block_noise_size_y)
         noise_z = random.randint(0, img_deps-block_noise_size_z)
-        window = orig_image[0, noise_x:noise_x+block_noise_size_x, 
+        window = orig_image[0, noise_z:noise_z+block_noise_size_z, 
                                noise_y:noise_y+block_noise_size_y, 
-                               noise_z:noise_z+block_noise_size_z,
+                               noise_x:noise_x+block_noise_size_x,
                            ]
         window = window.flatten()
         np.random.shuffle(window)
-        window = window.reshape((block_noise_size_x, 
+        window = window.reshape((block_noise_size_z, 
                                  block_noise_size_y, 
-                                 block_noise_size_z))
-        image_temp[0, noise_x:noise_x+block_noise_size_x, 
+                                 block_noise_size_x))
+        image_temp[0, noise_z:noise_z+block_noise_size_z, 
                       noise_y:noise_y+block_noise_size_y, 
-                      noise_z:noise_z+block_noise_size_z] = window
+                      noise_x:noise_x+block_noise_size_x] = window
     local_shuffling_x = image_temp
 
     return local_shuffling_x
 
 def image_in_painting(x):
-    _, img_rows, img_cols, img_deps = x.shape
+    _, img_deps, img_cols, img_rows = x.shape
     cnt = 5
     while cnt > 0 and random.random() < 0.95:
         block_noise_size_x = random.randint(img_rows//6, img_rows//3)
@@ -114,15 +116,16 @@ def image_in_painting(x):
         noise_y = random.randint(3, img_cols-block_noise_size_y-3)
         noise_z = random.randint(3, img_deps-block_noise_size_z-3)
         x[:, 
-          noise_x:noise_x+block_noise_size_x, 
+          noise_z:noise_z+block_noise_size_z, 
           noise_y:noise_y+block_noise_size_y, 
-          noise_z:noise_z+block_noise_size_z] = np.random.rand(block_noise_size_x, 
+          noise_x:noise_x+block_noise_size_x] = np.random.rand(block_noise_size_z, 
                                                                block_noise_size_y, 
-                                                               block_noise_size_z, ) * 1.0
+                                                               block_noise_size_x, ) * 1.0
     return x
 
 def image_out_painting(x):
-    _, img_rows, img_cols, img_deps = x.shape
+    #_, img_rows, img_cols, img_deps = x.shape
+    _, img_deps, img_cols, img_rows = x.shape
     image_temp = copy.deepcopy(x)
     x = np.random.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], ) * 1.0
     block_noise_size_x = img_rows - random.randint(3*img_rows//7, 4*img_rows//7)
@@ -132,11 +135,11 @@ def image_out_painting(x):
     noise_y = random.randint(3, img_cols-block_noise_size_y-3)
     noise_z = random.randint(3, img_deps-block_noise_size_z-3)
     x[:, 
-      noise_x:noise_x+block_noise_size_x, 
+      noise_z:noise_z+block_noise_size_z, 
       noise_y:noise_y+block_noise_size_y, 
-      noise_z:noise_z+block_noise_size_z] = image_temp[:, noise_x:noise_x+block_noise_size_x, 
+      noise_x:noise_x+block_noise_size_x] = image_temp[:, noise_z:noise_z+block_noise_size_z, 
                                                        noise_y:noise_y+block_noise_size_y, 
-                                                       noise_z:noise_z+block_noise_size_z]
+                                                       noise_x:noise_x+block_noise_size_x]
     cnt = 4
     while cnt > 0 and random.random() < 0.95:
         block_noise_size_x = img_rows - random.randint(3*img_rows//7, 4*img_rows//7)
@@ -146,17 +149,17 @@ def image_out_painting(x):
         noise_y = random.randint(3, img_cols-block_noise_size_y-3)
         noise_z = random.randint(3, img_deps-block_noise_size_z-3)
         x[:, 
-          noise_x:noise_x+block_noise_size_x, 
+          noise_z:noise_z+block_noise_size_z, 
           noise_y:noise_y+block_noise_size_y, 
-          noise_z:noise_z+block_noise_size_z] = image_temp[:, noise_x:noise_x+block_noise_size_x, 
+          noise_x:noise_x+block_noise_size_x] = image_temp[:, noise_z:noise_z+block_noise_size_z, 
                                                            noise_y:noise_y+block_noise_size_y, 
-                                                           noise_z:noise_z+block_noise_size_z]
+                                                           noise_x:noise_x+block_noise_size_x]
     return x
                 
 
 
 def generate_pair(img, batch_size, config, status="test"):
-    img_rows, img_cols, img_deps = img.shape[2], img.shape[3], img.shape[4]
+    img_deps, img_cols, img_rows = img.shape[2], img.shape[3], img.shape[4]
     while True:
         index = [i for i in range(img.shape[0])]
         random.shuffle(index)
@@ -168,13 +171,13 @@ def generate_pair(img, batch_size, config, status="test"):
             x[n] = copy.deepcopy(y[n])
             
             # Flip
-            x[n], y[n] = data_augmentation(x[n], y[n], config.flip_rate)
+            #x[n], y[n] = data_augmentation(x[n], y[n], config.flip_rate)
 
             # Local Shuffle Pixel
             x[n] = local_pixel_shuffling(x[n], prob=config.local_rate)
             
             # Apply non-Linear transformation with an assigned probability
-            x[n] = nonlinear_transformation(x[n], config.nonlinear_rate)
+            #x[n] = nonlinear_transformation(x[n], config.nonlinear_rate)
             
             # Inpainting & Outpainting
             if random.random() < config.paint_rate:
@@ -187,15 +190,17 @@ def generate_pair(img, batch_size, config, status="test"):
 
         # Save sample images module
         if config.save_samples is not None and status == "train" and random.random() < 0.01:
+            print('Saving samples')
             n_sample = random.choice( [i for i in range(config.batch_size)] )
-            sample_1 = np.concatenate((x[n_sample,0,:,:,2*img_deps//6], y[n_sample,0,:,:,2*img_deps//6]), axis=1)
-            sample_2 = np.concatenate((x[n_sample,0,:,:,3*img_deps//6], y[n_sample,0,:,:,3*img_deps//6]), axis=1)
-            sample_3 = np.concatenate((x[n_sample,0,:,:,4*img_deps//6], y[n_sample,0,:,:,4*img_deps//6]), axis=1)
-            sample_4 = np.concatenate((x[n_sample,0,:,:,5*img_deps//6], y[n_sample,0,:,:,5*img_deps//6]), axis=1)
-            final_sample = np.concatenate((sample_1, sample_2, sample_3, sample_4), axis=0)
+            sample_1 = np.concatenate((x[n_sample,0,2*img_deps//6,:,:], y[n_sample,0,2*img_deps//6,:,:]), axis=0)
+            sample_2 = np.concatenate((x[n_sample,0,3*img_deps//6,:,:], y[n_sample,0,3*img_deps//6,:,:]), axis=0)
+            sample_3 = np.concatenate((x[n_sample,0,4*img_deps//6,:,:], y[n_sample,0,4*img_deps//6,:,:]), axis=0)
+            sample_4 = np.concatenate((x[n_sample,0,5*img_deps//6,:,:], y[n_sample,0,5*img_deps//6,:,:]), axis=0)
+            final_sample = np.concatenate((sample_1, sample_2, sample_3, sample_4), axis=1)
             final_sample = final_sample * 255.0
             final_sample = final_sample.astype(np.uint8)
             file_name = ''.join([random.choice(string.ascii_letters + string.digits) for n in range(10)])+'.'+config.save_samples
-            imageio.imwrite(os.path.join(config.sample_path, config.exp_name, file_name), final_sample)
+            cv2.imwrite(os.path.join(config.sample_path, config.exp_name, file_name), final_sample)
+            #imageio.imwrite(os.path.join(config.sample_path, config.exp_name, file_name), final_sample)
 
         yield (x, y)
