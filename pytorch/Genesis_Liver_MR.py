@@ -47,7 +47,7 @@ validation_generator = generate_pair(x_valid,conf.batch_size, conf)'''
 train_dataset = NpyDataset(os.path.join(conf.data, 'train'), conf.train_fold, train=True)
 valid_dataset = NpyDataset(os.path.join(conf.data, 'val'), conf.valid_fold, train=False)
 train_loader = DataLoader(train_dataset, batch_size=conf.batch_size, shuffle=True, num_workers=6)
-valid_loader = DataLoader(valid_dataset, batch_size=conf.batch_size, shuffle=True, num_workers=6)
+valid_loader = DataLoader(valid_dataset, batch_size=conf.batch_size, num_workers=6)
 
 device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -100,22 +100,29 @@ if conf.weights != None:
 	intial_epoch=checkpoint['epoch']
 	best_loss = checkpoint['best_loss']
 	print("Loading weights from ",conf.weights)
+elif conf.pretrained != None:
+	checkpoint=torch.load(conf.pretrained)
+	model.load_state_dict(checkpoint['state_dict'])
+	#optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+	#intial_epoch=checkpoint['epoch']
+	#best_loss = checkpoint['best_loss']
+	print("Loading init weights from ",conf.pretrained)
+
 sys.stdout.flush()
 
+if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+	scheduler.step(best_loss)
 
 for epoch in range(intial_epoch,conf.nb_epoch):
 	if isinstance(scheduler, torch.optim.lr_scheduler.StepLR):
 		scheduler.step(epoch)
 	model.train()
+	print('Learning rate: %f' % (scheduler._last_lr[0]))
 	#for iteration in range(int(x_train.shape[0]//conf.batch_size)):
 	for iteration, (image, gt) in enumerate(train_loader):
-		#image, gt = next(training_generator)
-		#image = batch[0]
-		#gt = batch[1]
 		image,gt = image.to(device), gt.to(device)
 		#gt = np.repeat(gt,conf.nb_class,axis=1)
 		gt = gt.repeat(1, conf.nb_class, 1, 1, 1)
-		#print(gt.shape)
 		pred=model(image)
 		loss = criterion(pred,gt)
 		optimizer.zero_grad()
@@ -126,35 +133,58 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 			print('Epoch [{}/{}], iteration {}, Loss: {:.6f}'
 				.format(epoch + 1, conf.nb_epoch, iteration + 1, np.average(train_losses)))
 			sys.stdout.flush()
+			if (iteration + 1) % 200 ==0:
+				x = image[0].cpu().numpy()
+				y = gt[0].cpu().numpy()
+				p = pred[0].detach().cpu().numpy()
+				sample_1 = np.concatenate((x[0,2*x.shape[1]//6,:,:], y[0,2*x.shape[1]//6,:,:], p[0,2*x.shape[1]//6,:,:]), axis=0)
+				sample_2 = np.concatenate((x[0,3*x.shape[1]//6,:,:], y[0,3*x.shape[1]//6,:,:], p[0,3*x.shape[1]//6,:,:]), axis=0)
+				sample_3 = np.concatenate((x[0,4*x.shape[1]//6,:,:], y[0,4*x.shape[1]//6,:,:], p[0,4*x.shape[1]//6,:,:]), axis=0)
+				sample_4 = np.concatenate((x[0,5*x.shape[1]//6,:,:], y[0,5*x.shape[1]//6,:,:], p[0,5*x.shape[1]//6,:,:]), axis=0)
+				final_sample = np.concatenate((sample_1, sample_2, sample_3, sample_4), axis=1)
+				final_sample = final_sample * 255.0
+				final_sample = final_sample.astype(np.uint8)
+				file_name = str(epoch+1)+'_'+''.join([random.choice(string.ascii_letters + string.digits) for n in range(10)])+'.png'
+				cv2.imwrite(os.path.join('sample', 'train', file_name), final_sample)
 
 	with torch.no_grad():
 		model.eval()
 		print("validating....")
 		#for i in range(int(x_valid.shape[0]//conf.batch_size)):
 		for i, (image,gt) in enumerate(valid_loader):
-			#x,y = next(validation_generator)
-			#x = batch[0]
-			#y = batch[1]
-			#y = np.repeat(y,conf.nb_class,axis=1)
-			#image,gt = torch.from_numpy(x).float(), torch.from_numpy(y).float()
 			image=image.to(device)
 			gt=gt.to(device)
 			pred=model(image)
 			loss = criterion(pred,gt)
 			valid_losses.append(loss.item())
 
-			if random.random() < 0.05:
-				#print('Saving samples')
-				x = image.cpu().numpy()
-				y = pred.cpu().numpy()
-				sample_1 = np.concatenate((x[0,0,2*x.shape[1]//6,:,:], y[0,0,2*x.shape[1]//6,:,:]), axis=0)
-				sample_2 = np.concatenate((x[0,0,3*x.shape[1]//6,:,:], y[0,0,3*x.shape[1]//6,:,:]), axis=0)
-				sample_3 = np.concatenate((x[0,0,4*x.shape[1]//6,:,:], y[0,0,4*x.shape[1]//6,:,:]), axis=0)
-				sample_4 = np.concatenate((x[0,0,5*x.shape[1]//6,:,:], y[0,0,5*x.shape[1]//6,:,:]), axis=0)
+			'''for j in range(image.shape[0]):
+				if random.random() < 0.01:
+					x = image[j].cpu().numpy()
+					y = gt[j].cpu().numpy()
+					p = pred[j].cpu().numpy()
+					sample_1 = np.concatenate((x[0,2*x.shape[1]//6,:,:], y[0,2*x.shape[1]//6,:,:], p[0,2*x.shape[1]//6,:,:]), axis=0)
+					sample_2 = np.concatenate((x[0,3*x.shape[1]//6,:,:], y[0,3*x.shape[1]//6,:,:], p[0,3*x.shape[1]//6,:,:]), axis=0)
+					sample_3 = np.concatenate((x[0,4*x.shape[1]//6,:,:], y[0,4*x.shape[1]//6,:,:], p[0,4*x.shape[1]//6,:,:]), axis=0)
+					sample_4 = np.concatenate((x[0,5*x.shape[1]//6,:,:], y[0,5*x.shape[1]//6,:,:], p[0,5*x.shape[1]//6,:,:]), axis=0)
+					final_sample = np.concatenate((sample_1, sample_2, sample_3, sample_4), axis=1)
+					final_sample = final_sample * 255.0
+					final_sample = final_sample.astype(np.uint8)
+					file_name = str(epoch+1)+'_'+''.join([random.choice(string.ascii_letters + string.digits) for n in range(10)])+'.png'
+					cv2.imwrite(os.path.join('sample', 'val', file_name), final_sample)'''
+
+			if (i) % 50 ==0:
+				x = image[0].cpu().numpy()
+				y = gt[0].cpu().numpy()
+				p = pred[0].cpu().numpy()
+				sample_1 = np.concatenate((x[0,2*x.shape[1]//6,:,:], y[0,2*x.shape[1]//6,:,:], p[0,2*x.shape[1]//6,:,:]), axis=0)
+				sample_2 = np.concatenate((x[0,3*x.shape[1]//6,:,:], y[0,3*x.shape[1]//6,:,:], p[0,3*x.shape[1]//6,:,:]), axis=0)
+				sample_3 = np.concatenate((x[0,4*x.shape[1]//6,:,:], y[0,4*x.shape[1]//6,:,:], p[0,4*x.shape[1]//6,:,:]), axis=0)
+				sample_4 = np.concatenate((x[0,5*x.shape[1]//6,:,:], y[0,5*x.shape[1]//6,:,:], p[0,5*x.shape[1]//6,:,:]), axis=0)
 				final_sample = np.concatenate((sample_1, sample_2, sample_3, sample_4), axis=1)
 				final_sample = final_sample * 255.0
 				final_sample = final_sample.astype(np.uint8)
-				file_name = str(epoch)+'_'+''.join([random.choice(string.ascii_letters + string.digits) for n in range(10)])+'.png'
+				file_name = str(epoch+1)+'_'+''.join([random.choice(string.ascii_letters + string.digits) for n in range(10)])+'.png'
 				cv2.imwrite(os.path.join('sample', 'val', file_name), final_sample)
 	
 	#logging
@@ -177,6 +207,7 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 		torch.save({
 			'epoch': epoch+1,
 			'best_loss': best_loss,
+			'loss': valid_loss,
 			'state_dict' : model.state_dict(),
 			'optimizer_state_dict': optimizer.state_dict()
 		},os.path.join(conf.model_path, "Genesis_Liver_MR.pt"))
@@ -184,6 +215,13 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 	else:
 		print("Validation loss does not decrease from {:.4f}, num_epoch_no_improvement {}".format(best_loss,num_epoch_no_improvement))
 		num_epoch_no_improvement += 1
+	torch.save({
+		'epoch': epoch+1,
+		'best_loss': best_loss,
+		'loss': valid_loss,
+		'state_dict' : model.state_dict(),
+		'optimizer_state_dict': optimizer.state_dict()
+	},os.path.join(conf.model_path, "epoch_%03d.pt" % (epoch+1)))
 	if num_epoch_no_improvement == conf.patience:
 		print("Early Stopping")
 		break

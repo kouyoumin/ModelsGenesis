@@ -1,6 +1,7 @@
 import torch
 from torch.utils.data import Dataset
 import numpy as np
+import copy
 from tqdm import tqdm
 
 from utils import *
@@ -22,10 +23,9 @@ class NpyDataset(Dataset):
     
     def __getitem__(self, idx):
         y = self.array[idx]
+        x = y.copy()
         
-        if self.train:
-            x = copy.deepcopy(y)
-            
+        if self.train:            
             # Flip
             #x[n], y[n] = data_augmentation(x[n], y[n], config.flip_rate)
 
@@ -44,7 +44,7 @@ class NpyDataset(Dataset):
                     # Outpainting
                     x = image_out_painting(x)
             
-            if random.random() < 0.001:
+            '''if random.random() < 0.001:
                 print('Saving samples')
                 sample_1 = np.concatenate((x[0,2*x.shape[1]//6,:,:], y[0,2*x.shape[1]//6,:,:]), axis=0)
                 sample_2 = np.concatenate((x[0,3*x.shape[1]//6,:,:], y[0,3*x.shape[1]//6,:,:]), axis=0)
@@ -54,12 +54,40 @@ class NpyDataset(Dataset):
                 final_sample = final_sample * 255.0
                 final_sample = final_sample.astype(np.uint8)
                 file_name = ''.join([random.choice(string.ascii_letters + string.digits) for n in range(10)])+'.png'
-                cv2.imwrite(os.path.join('sample', 'train', file_name), final_sample)
+                cv2.imwrite(os.path.join('sample', 'train', file_name), final_sample)'''
+        else:            
+            rs = np.random.RandomState(seed=idx)
+            # Flip
+            #x[n], y[n] = data_augmentation(x[n], y[n], config.flip_rate)
+
+            # Local Shuffle Pixel
+            x = local_pixel_shuffling(x, prob=self.local_rate, random_state=rs)
             
-            return torch.FloatTensor(x), torch.FloatTensor(y)
-        else:
-            return torch.FloatTensor(y), torch.FloatTensor(y)
-        
+            # Apply non-Linear transformation with an assigned probability
+            x = nonlinear_transformation(x, random_state=rs)
+            
+            # Inpainting & Outpainting
+            if rs.random() < self.paint_rate:
+                if rs.random() < self.inpaint_rate:
+                    # Inpainting
+                    x = image_in_painting(x, random_state=rs)
+                else:
+                    # Outpainting
+                    x = image_out_painting(x, random_state=rs)
+            
+            '''if rs.random() < 0.5:
+                print('Saving samples')
+                sample_1 = np.concatenate((x[0,2*x.shape[1]//6,:,:], y[0,2*x.shape[1]//6,:,:]), axis=0)
+                sample_2 = np.concatenate((x[0,3*x.shape[1]//6,:,:], y[0,3*x.shape[1]//6,:,:]), axis=0)
+                sample_3 = np.concatenate((x[0,4*x.shape[1]//6,:,:], y[0,4*x.shape[1]//6,:,:]), axis=0)
+                sample_4 = np.concatenate((x[0,5*x.shape[1]//6,:,:], y[0,5*x.shape[1]//6,:,:]), axis=0)
+                final_sample = np.concatenate((sample_1, sample_2, sample_3, sample_4), axis=1)
+                final_sample = final_sample * 255.0
+                final_sample = final_sample.astype(np.uint8)
+                file_name = ''.join([random.choice(string.ascii_letters + string.digits) for n in range(10)])+'.png'
+                cv2.imwrite(os.path.join('sample', 'val', file_name), final_sample)'''
+            
+        return torch.from_numpy(x).float(), torch.from_numpy(y).float()
         
 
     def __len__(self):

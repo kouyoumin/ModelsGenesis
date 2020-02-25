@@ -122,7 +122,7 @@ config = setup_config(input_rows=options.input_rows,
                       crop_cols=options.crop_cols,
                       crop_deps=options.crop_deps,
                       scale=options.scale,
-                      len_border=10,
+                      len_border=12,
                       len_border_z=0,
                       #len_depth=3,
                       #lung_min=0.7,
@@ -141,7 +141,7 @@ def infinite_generator_from_one_volume(config, img_array):
     #img_array[img_array > config.hu_max] = config.hu_max
     #img_array = 1.0*(img_array-config.hu_min) / (config.hu_max-config.hu_min)
     
-    slice_set = np.zeros((config.scale, config.input_deps, config.input_cols, config.input_rows), dtype=float)
+    slice_set = np.zeros((config.scale, config.input_deps, config.input_cols, config.input_rows), dtype=np.float32)
     
     num_pair = 0
     cnt = 0
@@ -193,7 +193,7 @@ def infinite_generator_from_one_volume(config, img_array):
         if num_pair == config.scale:
             break
             
-    return np.array(slice_set)
+    return np.array(slice_set, dtype=np.float32)
 
 
 def get_self_learning_data(fold, config):
@@ -204,19 +204,20 @@ def get_self_learning_data(fold, config):
     #            if os.path.isdir(os.path.join(subset_path,f))]
     dcemr = DynamicMRI(subset_path)
     for phase in dcemr.phases:
-        #itk_img = phase.image
-        img_array = phase.numpy()
-        #img_array = ((img_array.astype(np.float32)-img_array.min()) * 2.0 / (img_array.max()-img_array.min()))-1.0
-        img_array = (img_array.astype(np.float32)-img_array.min()) / (img_array.max()-img_array.min())
-        #print(img_array.shape)
-        #img_array = img_array.transpose(2, 1, 0)
-        
-        x = infinite_generator_from_one_volume(config, img_array)
-        if x is not None:
-            slice_set.extend(x)
+        # Multiscale
+        sizes = [244, 256, 272, 288]
+        for size in sizes:
+            img_array = phase.restore_original().resize(size, size, phase.image.GetDepth()).numpy().astype(np.float32)
+            #img_array = ((img_array.astype(np.float32)-img_array.min()) * 2.0 / (img_array.max()-img_array.min()))-1.0
+            img_array = (img_array-img_array.min()) / (img_array.max()-img_array.min())
+            #print(img_array.shape)
+            #img_array = img_array.transpose(2, 1, 0)
             
-    return np.array(slice_set)
-    #return 0
+            x = infinite_generator_from_one_volume(config, img_array)
+            if x is not None:
+                slice_set.extend(x)
+            
+    return np.array(slice_set, dtype=np.float32)
 
 
 #print(">> Fold {}".format(fold))

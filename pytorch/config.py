@@ -78,6 +78,8 @@ class models_genesis_config_mr:
     # model pre-training
     verbose = 1
     weights = None
+    #weights = '/home/kouyoumin/hdd/kouyoumin/ModelsGenesis/pytorch/old/pretrained_weights/Genesis_Liver_MR.pt'
+    pretrained ='/home/kouyoumin/hdd/kouyoumin/ModelsGenesis/pytorch/old/pretrained_weights/Genesis_Liver_MR.pt'
     batch_size = 6
     optimizer = "sgd"
     workers = 10
@@ -85,7 +87,7 @@ class models_genesis_config_mr:
     save_samples = "png"
     nb_epoch = 10000
     patience = 50
-    lr = 0.2
+    lr = 0.1
 
     # image deformation
     nonlinear_rate = 0.9

@@ -48,21 +48,34 @@ def bezier_curve(points, nTimes=1000):
 
     return xvals, yvals
 
-def data_augmentation(x, y, prob=0.5):
+def data_augmentation(x, y, prob=0.5, random_state=None):
     # augmentation by flipping
     cnt = 3
-    while random.random() < prob and cnt > 0:
-        degree = random.choice([0, 1, 2])
-        x = np.flip(x, axis=degree)
-        y = np.flip(y, axis=degree)
-        cnt = cnt - 1
+    if isinstance(random_state, np.random.RandomState):
+         while random_state.random() < prob and cnt > 0:
+            degree = random_state.choice([0, 1, 2])
+            x = np.flip(x, axis=degree)
+            y = np.flip(y, axis=degree)
+            cnt = cnt - 1
+    else:
+       while random.random() < prob and cnt > 0:
+            degree = random.choice([0, 1, 2])
+            x = np.flip(x, axis=degree)
+            y = np.flip(y, axis=degree)
+            cnt = cnt - 1
 
     return x, y
 
-def nonlinear_transformation(x, prob=0.5):
-    if random.random() >= prob:
-        return x
-    points = [[0, 0], [random.random(), random.random()], [random.random(), random.random()], [1, 1]]
+def nonlinear_transformation(x, prob=0.5, random_state=None):
+    if isinstance(random_state, np.random.RandomState):
+        if random_state.random() >= prob:
+            return x
+        points = [[0, 0], [random_state.random(), random_state.random()], [random_state.random(), random_state.random()], [1, 1]]
+    else:
+        if random.random() >= prob:
+            return x
+        points = [[0, 0], [random.random(), random.random()], [random.random(), random.random()], [1, 1]]
+    
     xpoints = sorted([p[0] for p in points])
     ypoints = sorted([p[1] for p in points])
     xvals, yvals = bezier_curve(points, nTimes=100000)
@@ -75,26 +88,45 @@ def nonlinear_transformation(x, prob=0.5):
     nonlinear_x = np.interp(x, xvals, yvals)
     return nonlinear_x
 
-def local_pixel_shuffling(x, prob=0.5):
-    if random.random() >= prob:
-        return x
-    image_temp = copy.deepcopy(x)
-    orig_image = copy.deepcopy(x)
+def local_pixel_shuffling(x, prob=0.5, random_state=None):
+    if isinstance(random_state, np.random.RandomState):
+        if random_state.random() >= prob:
+            return x
+    else:
+        if random.random() >= prob:
+            return x
+    
+    image_temp = x.copy()#copy.deepcopy(x)
+    orig_image = x.copy()#copy.deepcopy(x)
     _, img_deps, img_cols, img_rows = x.shape
     num_block = 10000
     for _ in range(num_block):
-        block_noise_size_x = random.randint(1, img_rows//16)
-        block_noise_size_y = random.randint(1, img_cols//16)
-        block_noise_size_z = random.randint(1, img_deps//16)
-        noise_x = random.randint(0, img_rows-block_noise_size_x)
-        noise_y = random.randint(0, img_cols-block_noise_size_y)
-        noise_z = random.randint(0, img_deps-block_noise_size_z)
+        if isinstance(random_state, np.random.RandomState):
+            block_noise_size_x = random_state.randint(1, img_rows//16+1)
+            block_noise_size_y = random_state.randint(1, img_cols//16+1)
+            block_noise_size_z = random_state.randint(1, img_deps//16+1)
+            noise_x = random_state.randint(0, img_rows-block_noise_size_x)
+            noise_y = random_state.randint(0, img_cols-block_noise_size_y)
+            noise_z = random_state.randint(0, img_deps-block_noise_size_z)
+        else:
+            block_noise_size_x = random.randint(1, img_rows//16)
+            block_noise_size_y = random.randint(1, img_cols//16)
+            block_noise_size_z = random.randint(1, img_deps//16)
+            noise_x = random.randint(0, img_rows-block_noise_size_x)
+            noise_y = random.randint(0, img_cols-block_noise_size_y)
+            noise_z = random.randint(0, img_deps-block_noise_size_z)
+        
         window = orig_image[0, noise_z:noise_z+block_noise_size_z, 
                                noise_y:noise_y+block_noise_size_y, 
                                noise_x:noise_x+block_noise_size_x,
                            ]
         window = window.flatten()
-        np.random.shuffle(window)
+
+        if isinstance(random_state, np.random.RandomState):
+            random_state.shuffle(window)
+        else:
+            np.random.shuffle(window)
+        
         window = window.reshape((block_noise_size_z, 
                                  block_noise_size_y, 
                                  block_noise_size_x))
@@ -105,55 +137,129 @@ def local_pixel_shuffling(x, prob=0.5):
 
     return local_shuffling_x
 
-def image_in_painting(x):
+def image_in_painting(x, random_state=None):
     _, img_deps, img_cols, img_rows = x.shape
     cnt = 5
-    while cnt > 0 and random.random() < 0.95:
-        block_noise_size_x = random.randint(img_rows//6, img_rows//3)
-        block_noise_size_y = random.randint(img_cols//6, img_cols//3)
-        block_noise_size_z = random.randint(img_deps//6, img_deps//3)
-        noise_x = random.randint(3, img_rows-block_noise_size_x-3)
-        noise_y = random.randint(3, img_cols-block_noise_size_y-3)
-        noise_z = random.randint(3, img_deps-block_noise_size_z-3)
-        x[:, 
-          noise_z:noise_z+block_noise_size_z, 
-          noise_y:noise_y+block_noise_size_y, 
-          noise_x:noise_x+block_noise_size_x] = np.random.rand(block_noise_size_z, 
-                                                               block_noise_size_y, 
-                                                               block_noise_size_x, ) * 1.0
+    
+    if isinstance(random_state, np.random.RandomState):
+        while cnt > 0 and random_state.random() < 0.95:
+            block_noise_size_x = random_state.randint(img_rows//8, img_rows//4+1)
+            block_noise_size_y = random_state.randint(img_cols//8, img_cols//4+1)
+            block_noise_size_z = random_state.randint(img_deps//8, img_deps//4+1)
+            noise_x = random_state.randint(3, img_rows-block_noise_size_x-2)
+            noise_y = random_state.randint(3, img_cols-block_noise_size_y-2)
+            noise_z = random_state.randint(3, img_deps-block_noise_size_z-2)
+            x[:, 
+            noise_z:noise_z+block_noise_size_z, 
+            noise_y:noise_y+block_noise_size_y, 
+            noise_x:noise_x+block_noise_size_x] = random_state.rand(block_noise_size_z, 
+                                                                block_noise_size_y, 
+                                                                block_noise_size_x)
+    else:
+        while cnt > 0 and random.random() < 0.95:
+            block_noise_size_x = random.randint(img_rows//8, img_rows//4)
+            block_noise_size_y = random.randint(img_cols//8, img_cols//4)
+            block_noise_size_z = random.randint(img_deps//8, img_deps//4)
+            noise_x = random.randint(3, img_rows-block_noise_size_x-3)
+            noise_y = random.randint(3, img_cols-block_noise_size_y-3)
+            noise_z = random.randint(3, img_deps-block_noise_size_z-3)
+            x[:, 
+            noise_z:noise_z+block_noise_size_z, 
+            noise_y:noise_y+block_noise_size_y, 
+            noise_x:noise_x+block_noise_size_x] = np.random.rand(block_noise_size_z, 
+                                                                block_noise_size_y, 
+                                                                block_noise_size_x)
     return x
 
-def image_out_painting(x):
+def image_out_painting(x, random_state=None):
     #_, img_rows, img_cols, img_deps = x.shape
     _, img_deps, img_cols, img_rows = x.shape
-    image_temp = copy.deepcopy(x)
-    x = np.random.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], ) * 1.0
-    block_noise_size_x = img_rows - random.randint(3*img_rows//7, 4*img_rows//7)
-    block_noise_size_y = img_cols - random.randint(3*img_cols//7, 4*img_cols//7)
-    block_noise_size_z = img_deps - random.randint(3*img_deps//7, 4*img_deps//7)
-    noise_x = random.randint(3, img_rows-block_noise_size_x-3)
-    noise_y = random.randint(3, img_cols-block_noise_size_y-3)
-    noise_z = random.randint(3, img_deps-block_noise_size_z-3)
-    x[:, 
-      noise_z:noise_z+block_noise_size_z, 
-      noise_y:noise_y+block_noise_size_y, 
-      noise_x:noise_x+block_noise_size_x] = image_temp[:, noise_z:noise_z+block_noise_size_z, 
-                                                       noise_y:noise_y+block_noise_size_y, 
-                                                       noise_x:noise_x+block_noise_size_x]
-    cnt = 4
-    while cnt > 0 and random.random() < 0.95:
-        block_noise_size_x = img_rows - random.randint(3*img_rows//7, 4*img_rows//7)
-        block_noise_size_y = img_cols - random.randint(3*img_cols//7, 4*img_cols//7)
-        block_noise_size_z = img_deps - random.randint(3*img_deps//7, 4*img_deps//7)
+    image_temp = x.copy()#copy.deepcopy(x)
+
+    if isinstance(random_state, np.random.RandomState):
+        x = random_state.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3])
+        block_noise_size_x = img_rows - random_state.randint(img_rows//4, img_rows//2+1)
+        block_noise_size_y = img_cols - random_state.randint(img_cols//4, img_cols//2+1)
+        block_noise_size_z = img_deps - random_state.randint(img_deps//4, img_deps//2+1)
+        noise_x = random_state.randint(3, img_rows-block_noise_size_x-2)
+        noise_y = random_state.randint(3, img_cols-block_noise_size_y-2)
+        noise_z = random_state.randint(3, img_deps-block_noise_size_z-2)
+        x[:, 
+        noise_z:noise_z+block_noise_size_z, 
+        noise_y:noise_y+block_noise_size_y, 
+        noise_x:noise_x+block_noise_size_x] = image_temp[:, noise_z:noise_z+block_noise_size_z, 
+                                                        noise_y:noise_y+block_noise_size_y, 
+                                                        noise_x:noise_x+block_noise_size_x]
+        cnt = 4
+        while cnt > 0 and random.random() < 0.95:
+            block_noise_size_x = img_rows - random_state.randint(img_rows//4, img_rows//2+1)
+            block_noise_size_y = img_cols - random_state.randint(img_cols//4, img_cols//2+1)
+            block_noise_size_z = img_deps - random_state.randint(img_deps//4, img_deps//2+1)
+            noise_x = random_state.randint(3, img_rows-block_noise_size_x-2)
+            noise_y = random_state.randint(3, img_cols-block_noise_size_y-2)
+            noise_z = random_state.randint(3, img_deps-block_noise_size_z-2)
+            x[:, 
+            noise_z:noise_z+block_noise_size_z, 
+            noise_y:noise_y+block_noise_size_y, 
+            noise_x:noise_x+block_noise_size_x] = image_temp[:, noise_z:noise_z+block_noise_size_z, 
+                                                            noise_y:noise_y+block_noise_size_y, 
+                                                            noise_x:noise_x+block_noise_size_x]
+        '''x = np.random.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], ) * 1.0
+        block_noise_size_x = img_rows - random.randint(img_rows//4, img_rows//2)
+        block_noise_size_y = img_cols - random.randint(img_cols//4, img_cols//2)
+        block_noise_size_z = img_deps - random.randint(img_deps//4, img_deps//2)
         noise_x = random.randint(3, img_rows-block_noise_size_x-3)
         noise_y = random.randint(3, img_cols-block_noise_size_y-3)
         noise_z = random.randint(3, img_deps-block_noise_size_z-3)
         x[:, 
-          noise_z:noise_z+block_noise_size_z, 
-          noise_y:noise_y+block_noise_size_y, 
-          noise_x:noise_x+block_noise_size_x] = image_temp[:, noise_z:noise_z+block_noise_size_z, 
-                                                           noise_y:noise_y+block_noise_size_y, 
-                                                           noise_x:noise_x+block_noise_size_x]
+        noise_z:noise_z+block_noise_size_z, 
+        noise_y:noise_y+block_noise_size_y, 
+        noise_x:noise_x+block_noise_size_x] = image_temp[:, noise_z:noise_z+block_noise_size_z, 
+                                                        noise_y:noise_y+block_noise_size_y, 
+                                                        noise_x:noise_x+block_noise_size_x]
+        cnt = 4
+        while cnt > 0 and random.random() < 0.95:
+            block_noise_size_x = img_rows - random.randint(img_rows//4, img_rows//2)
+            block_noise_size_y = img_cols - random.randint(img_cols//4, img_cols//2)
+            block_noise_size_z = img_deps - random.randint(img_deps//4, img_deps//2)
+            noise_x = random.randint(3, img_rows-block_noise_size_x-3)
+            noise_y = random.randint(3, img_cols-block_noise_size_y-3)
+            noise_z = random.randint(3, img_deps-block_noise_size_z-3)
+            x[:, 
+            noise_z:noise_z+block_noise_size_z, 
+            noise_y:noise_y+block_noise_size_y, 
+            noise_x:noise_x+block_noise_size_x] = image_temp[:, noise_z:noise_z+block_noise_size_z, 
+                                                            noise_y:noise_y+block_noise_size_y, 
+                                                            noise_x:noise_x+block_noise_size_x]'''
+    else:
+        x = np.random.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3])
+        block_noise_size_x = img_rows - random.randint(img_rows//4, img_rows//2)
+        block_noise_size_y = img_cols - random.randint(img_cols//4, img_cols//2)
+        block_noise_size_z = img_deps - random.randint(img_deps//4, img_deps//2)
+        noise_x = random.randint(3, img_rows-block_noise_size_x-3)
+        noise_y = random.randint(3, img_cols-block_noise_size_y-3)
+        noise_z = random.randint(3, img_deps-block_noise_size_z-3)
+        x[:, 
+        noise_z:noise_z+block_noise_size_z, 
+        noise_y:noise_y+block_noise_size_y, 
+        noise_x:noise_x+block_noise_size_x] = image_temp[:, noise_z:noise_z+block_noise_size_z, 
+                                                        noise_y:noise_y+block_noise_size_y, 
+                                                        noise_x:noise_x+block_noise_size_x]
+        cnt = 4
+        while cnt > 0 and random.random() < 0.95:
+            block_noise_size_x = img_rows - random.randint(img_rows//4, img_rows//2)
+            block_noise_size_y = img_cols - random.randint(img_cols//4, img_cols//2)
+            block_noise_size_z = img_deps - random.randint(img_deps//4, img_deps//2)
+            noise_x = random.randint(3, img_rows-block_noise_size_x-3)
+            noise_y = random.randint(3, img_cols-block_noise_size_y-3)
+            noise_z = random.randint(3, img_deps-block_noise_size_z-3)
+            x[:, 
+            noise_z:noise_z+block_noise_size_z, 
+            noise_y:noise_y+block_noise_size_y, 
+            noise_x:noise_x+block_noise_size_x] = image_temp[:, noise_z:noise_z+block_noise_size_z, 
+                                                            noise_y:noise_y+block_noise_size_y, 
+                                                            noise_x:noise_x+block_noise_size_x]
+    
     return x
                 
 

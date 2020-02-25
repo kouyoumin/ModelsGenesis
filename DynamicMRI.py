@@ -16,7 +16,10 @@ class DynamicMRI:
                 desc = series.get_desc()
                 if ('Ax ' in desc) and (('C-' in desc) or ('C+' in desc)):
                     print(desc)
-                    self.phases.append(series.resize(256,256,series.image.GetDepth()))
+                    self.phases.append(series)#.resize(256,256,series.image.GetDepth()))
+                    #self.phases.append(series.restore_original().resize(272,272,series.image.GetDepth()))
+                    #self.phases.append(series.restore_original().resize(288,288,series.image.GetDepth()))
+                    #self.phases.append(series.restore_original().resize(320,320,series.image.GetDepth()))
             except:
                 continue
 
