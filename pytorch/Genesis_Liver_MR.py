@@ -78,7 +78,7 @@ else:
 	raise
 
 #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=int(conf.patience * 0.8), gamma=0.5)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, verbose=True)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2, verbose=True)
 
 # to track the training loss as the model trains
 train_losses = []
@@ -133,7 +133,7 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 			print('Epoch [{}/{}], iteration {}, Loss: {:.6f}'
 				.format(epoch + 1, conf.nb_epoch, iteration + 1, np.average(train_losses)))
 			sys.stdout.flush()
-			if (iteration + 1) % 200 ==0:
+			if (iteration + 1) % 200 == 0:
 				x = image[0].cpu().numpy()
 				y = gt[0].cpu().numpy()
 				p = pred[0].detach().cpu().numpy()
@@ -158,7 +158,7 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 			loss = criterion(pred,gt)
 			valid_losses.append(loss.item())
 
-			'''for j in range(image.shape[0]):
+			for j in range(image.shape[0]):
 				if random.random() < 0.01:
 					x = image[j].cpu().numpy()
 					y = gt[j].cpu().numpy()
@@ -171,9 +171,12 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 					final_sample = final_sample * 255.0
 					final_sample = final_sample.astype(np.uint8)
 					file_name = str(epoch+1)+'_'+''.join([random.choice(string.ascii_letters + string.digits) for n in range(10)])+'.png'
-					cv2.imwrite(os.path.join('sample', 'val', file_name), final_sample)'''
+					cv2.imwrite(os.path.join('sample', 'val', file_name), final_sample)
 
-			if (i) % 50 ==0:
+			if (i + 1) % 10 == 0:
+				print('Epoch [{}/{}], iteration {}, Loss: {:.6f}'
+				.format(epoch + 1, conf.nb_epoch, i + 1, np.average(valid_losses)))
+				sys.stdout.flush()
 				x = image[0].cpu().numpy()
 				y = gt[0].cpu().numpy()
 				p = pred[0].cpu().numpy()

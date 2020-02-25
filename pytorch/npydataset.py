@@ -64,7 +64,7 @@ class NpyDataset(Dataset):
             x = local_pixel_shuffling(x, prob=self.local_rate, random_state=rs)
             
             # Apply non-Linear transformation with an assigned probability
-            x = nonlinear_transformation(x, random_state=rs)
+            # x = nonlinear_transformation(x, random_state=rs)
             
             # Inpainting & Outpainting
             if rs.random() < self.paint_rate:
