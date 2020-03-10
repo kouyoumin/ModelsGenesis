@@ -1,12 +1,17 @@
 import os
 import SimpleITK as sitk
+import cv2
+import numpy as np
 
 class DicomSeries:
-    def __init__(self, path, series_id, reader=None):
+    def __init__(self, path, series_id, reader=None, verbose=False):
         if not reader:
             reader = sitk.ImageSeriesReader()
         reader.MetaDataDictionaryArrayUpdateOn()
+        self.path = path
+        self.verbose = verbose
         self.file_names = reader.GetGDCMSeriesFileNames(path, series_id)
+        self.annotation = None
         reader.SetFileNames(self.file_names)
         self.image = reader.Execute()
         self.orig_image = self.image
@@ -41,6 +46,46 @@ class DicomSeries:
             return self.orig_tags[0][tag_id]
         else:
             return None
+    
+    def get_anno(self):
+        annofiles = []
+        for name in self.file_names:
+            path, filename = os.path.split(name)
+            annofile = os.path.join(path, 'annotations', filename+'.png')
+            if os.path.isfile(annofile):
+                annofiles.append(annofile)
+            #else:
+            #    if len(annofiles) > 0:
+            #        print('%s: %d annotations found, %s missing' % self.getdesc)
+            #    return None
+        if  len(self.file_names) != len(annofiles):
+            if len(annofiles) > 0:
+                print(self.path[-2:] + ': ' + self.get_desc() + '- Files: ' + str(len(self.file_names)) + ', Annos: ' + str(len(annofiles)))
+            return None
+        annos = []
+        for annofile in annofiles:
+            annos.append(cv2.imread(annofile)[:,:,0])
+
+        return np.array(annos)
+    
+    def get_multi_anno(self):
+        mixed_anno = self.get_anno()
+        if mixed_anno is None:
+            return None
+        multianno = np.zeros((8,)+mixed_anno.shape, dtype=np.uint8)
+        multianno[7,:,:,:] = mixed_anno // 128 > 0
+        multianno[6,:,:,:] = (mixed_anno % 128) // 64 > 0
+        multianno[5,:,:,:] = (mixed_anno % 64) // 32 > 0
+        multianno[4,:,:,:] = (mixed_anno % 32) // 16 > 0
+        multianno[3,:,:,:] = (mixed_anno % 16) // 8 > 0
+        multianno[2,:,:,:] = (mixed_anno % 8) // 4 > 0
+        multianno[1,:,:,:] = (mixed_anno % 4) // 2 > 0
+        multianno[0,:,:,:] = (mixed_anno % 2) > 0
+        self.annotation = multianno.astype(np.float32)
+        if self.verbose:
+            for i in range(8):
+                print('Label '+str(i)+': '+str(self.annotation[i].max()))
+        return self.annotation
     
     def numpy(self):
         return sitk.GetArrayFromImage(self.image)

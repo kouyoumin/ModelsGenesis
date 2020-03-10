@@ -7,7 +7,7 @@ from tqdm import tqdm
 from utils import *
 
 class NpyDataset(Dataset):
-    def __init__(self, root_path, folds, scale=32, input_rows=128, input_cols=128, input_deps=32, local_rate=0.5, paint_rate=0.9, inpaint_rate=0.2, train=True):
+    def __init__(self, root_path, folds, scale=24, input_rows=128, input_cols=128, input_deps=32, local_rate=0.5, paint_rate=0.9, inpaint_rate=0.2, train=True):
         self.local_rate = local_rate
         self.paint_rate = paint_rate
         self.inpaint_rate = inpaint_rate
@@ -33,7 +33,8 @@ class NpyDataset(Dataset):
             x = local_pixel_shuffling(x, prob=self.local_rate)
             
             # Apply non-Linear transformation with an assigned probability
-            x = nonlinear_transformation(x)
+            #x = nonlinear_transformation(x)
+            #x = gamma_augmentation(x)
             
             # Inpainting & Outpainting
             if random.random() < self.paint_rate:
@@ -92,3 +93,20 @@ class NpyDataset(Dataset):
 
     def __len__(self):
         return self.array.shape[0]
+
+
+if __name__ == '__main__':
+    import sys
+    import os
+    from config import models_genesis_config_mr
+    
+    conf = models_genesis_config_mr()
+    valid_dataset = NpyDataset(os.path.join(conf.data, 'val'), conf.valid_fold, train=False)
+
+    for idx in range(100):
+        print(idx)
+        idx = np.random.randint(0, len(valid_dataset))
+        sample1 = valid_dataset[idx]
+        sample2 = valid_dataset[idx]
+        np.testing.assert_array_equal(sample1[0].numpy(), sample2[0].numpy())
+        np.testing.assert_array_equal(sample1[1].numpy(), sample2[1].numpy())

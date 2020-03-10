@@ -78,7 +78,7 @@ else:
 	raise
 
 #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=int(conf.patience * 0.8), gamma=0.5)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2, verbose=True)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1, verbose=True)
 
 # to track the training loss as the model trains
 train_losses = []
@@ -98,8 +98,13 @@ if conf.weights != None:
 	model.load_state_dict(checkpoint['state_dict'])
 	optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 	intial_epoch=checkpoint['epoch']
-	best_loss = checkpoint['best_loss']
-	print("Loading weights from ",conf.weights)
+	if 'scheduler' in checkpoint:
+		scheduler.load_state_dict(checkpoint['scheduler'])
+	if 'best_loss' in checkpoint:
+		best_loss = checkpoint['best_loss']
+	if 'num_epoch_no_improvement' in checkpoint:
+		num_epoch_no_improvement = checkpoint['num_epoch_no_improvement']
+	print("Resuming from ",conf.weights)
 elif conf.pretrained != None:
 	checkpoint=torch.load(conf.pretrained)
 	model.load_state_dict(checkpoint['state_dict'])
@@ -144,7 +149,8 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 				final_sample = np.concatenate((sample_1, sample_2, sample_3, sample_4), axis=1)
 				final_sample = final_sample * 255.0
 				final_sample = final_sample.astype(np.uint8)
-				file_name = str(epoch+1)+'_'+''.join([random.choice(string.ascii_letters + string.digits) for n in range(10)])+'.png'
+				file_name = str(epoch+1)+'_'+str(iteration+1)+'.png'
+				#file_name = str(epoch+1)+'_'+''.join([random.choice(string.ascii_letters + string.digits) for n in range(10)])+'.png'
 				cv2.imwrite(os.path.join('sample', 'train', file_name), final_sample)
 
 	with torch.no_grad():
@@ -157,21 +163,6 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 			pred=model(image)
 			loss = criterion(pred,gt)
 			valid_losses.append(loss.item())
-
-			for j in range(image.shape[0]):
-				if random.random() < 0.01:
-					x = image[j].cpu().numpy()
-					y = gt[j].cpu().numpy()
-					p = pred[j].cpu().numpy()
-					sample_1 = np.concatenate((x[0,2*x.shape[1]//6,:,:], y[0,2*x.shape[1]//6,:,:], p[0,2*x.shape[1]//6,:,:]), axis=0)
-					sample_2 = np.concatenate((x[0,3*x.shape[1]//6,:,:], y[0,3*x.shape[1]//6,:,:], p[0,3*x.shape[1]//6,:,:]), axis=0)
-					sample_3 = np.concatenate((x[0,4*x.shape[1]//6,:,:], y[0,4*x.shape[1]//6,:,:], p[0,4*x.shape[1]//6,:,:]), axis=0)
-					sample_4 = np.concatenate((x[0,5*x.shape[1]//6,:,:], y[0,5*x.shape[1]//6,:,:], p[0,5*x.shape[1]//6,:,:]), axis=0)
-					final_sample = np.concatenate((sample_1, sample_2, sample_3, sample_4), axis=1)
-					final_sample = final_sample * 255.0
-					final_sample = final_sample.astype(np.uint8)
-					file_name = str(epoch+1)+'_'+''.join([random.choice(string.ascii_letters + string.digits) for n in range(10)])+'.png'
-					cv2.imwrite(os.path.join('sample', 'val', file_name), final_sample)
 
 			if (i + 1) % 10 == 0:
 				print('Epoch [{}/{}], iteration {}, Loss: {:.6f}'
@@ -187,7 +178,7 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 				final_sample = np.concatenate((sample_1, sample_2, sample_3, sample_4), axis=1)
 				final_sample = final_sample * 255.0
 				final_sample = final_sample.astype(np.uint8)
-				file_name = str(epoch+1)+'_'+''.join([random.choice(string.ascii_letters + string.digits) for n in range(10)])+'.png'
+				file_name = str(epoch+1)+'_'+str(i+1)+'.png'
 				cv2.imwrite(os.path.join('sample', 'val', file_name), final_sample)
 	
 	#logging
@@ -211,8 +202,10 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 			'epoch': epoch+1,
 			'best_loss': best_loss,
 			'loss': valid_loss,
+			'num_epoch_no_improvement' : 0,
 			'state_dict' : model.state_dict(),
-			'optimizer_state_dict': optimizer.state_dict()
+			'optimizer_state_dict': optimizer.state_dict(),
+			'scheduler': scheduler.state_dict()
 		},os.path.join(conf.model_path, "Genesis_Liver_MR.pt"))
 		print("Saving model ",os.path.join(conf.model_path,"Genesis_Liver_MR.pt"))
 	else:
@@ -222,8 +215,10 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 		'epoch': epoch+1,
 		'best_loss': best_loss,
 		'loss': valid_loss,
+		'num_epoch_no_improvement': num_epoch_no_improvement,
 		'state_dict' : model.state_dict(),
-		'optimizer_state_dict': optimizer.state_dict()
+		'optimizer_state_dict': optimizer.state_dict(),
+		'scheduler': scheduler.state_dict()
 	},os.path.join(conf.model_path, "epoch_%03d.pt" % (epoch+1)))
 	if num_epoch_no_improvement == conf.patience:
 		print("Early Stopping")

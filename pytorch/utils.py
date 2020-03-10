@@ -88,6 +88,22 @@ def nonlinear_transformation(x, prob=0.5, random_state=None):
     nonlinear_x = np.interp(x, xvals, yvals)
     return nonlinear_x
 
+def gamma_augmentation(x, range=(0.7, 1.5), random_state=None):
+    if not isinstance(range, tuple):
+        return x
+    if isinstance(random_state, np.random.RandomState):
+        gamma = random_state.uniform(*range)
+        if random_state.random() < 0.5:
+            gamma = 1/gamma
+    
+    else:
+        gamma = np.random.uniform(*range)
+        if np.random.random() < 0.5:
+            gamma = 1/gamma
+    
+    return np.power(x, gamma)
+
+
 def local_pixel_shuffling(x, prob=0.5, random_state=None):
     if isinstance(random_state, np.random.RandomState):
         if random_state.random() >= prob:
@@ -191,7 +207,7 @@ def image_out_painting(x, random_state=None):
                                                         noise_y:noise_y+block_noise_size_y, 
                                                         noise_x:noise_x+block_noise_size_x]
         cnt = 4
-        while cnt > 0 and random.random() < 0.95:
+        while cnt > 0 and random_state.random() < 0.95:
             block_noise_size_x = img_rows - random_state.randint(img_rows//4, img_rows//2+1)
             block_noise_size_y = img_cols - random_state.randint(img_cols//4, img_cols//2+1)
             block_noise_size_z = img_deps - random_state.randint(img_deps//4, img_deps//2+1)

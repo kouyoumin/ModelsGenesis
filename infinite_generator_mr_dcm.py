@@ -52,7 +52,7 @@ parser.add_option("--crop_cols", dest="crop_cols", help="crop cols", default=128
 parser.add_option("--crop_deps", dest="crop_deps", help="crop deps", default=32, type="int")
 parser.add_option("--data", dest="data", help="the directory of LUNA16 dataset", default=None, type="string")
 parser.add_option("--save", dest="save", help="the directory of processed 3D cubes", default=None, type="string")
-parser.add_option("--scale", dest="scale", help="scale of the generator", default=32, type="int")
+parser.add_option("--scale", dest="scale", help="scale of the generator", default=24, type="int")
 (options, args) = parser.parse_args()
 #fold = options.fold
 
@@ -81,8 +81,8 @@ class setup_config():
                  len_border_z=None,
                  scale=None,
                  DATA_DIR=None,
-                 train_fold=[1,2,3,4,5,6,7,8,9,10,11,12,14,15,16,17,18,20,21,22,23,24,25,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55],
-                 valid_fold=[56,57,58,59,61,62,63,64,66,68,69],
+                 train_fold=[1,2,3,4,5,6,7,8,9,10,11,12,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60],
+                 valid_fold=[61,62,63,64,65,66,67,68,69,70],
                  test_fold=[],
                  #len_depth=None,
                  #lung_min=0.7,
@@ -122,7 +122,7 @@ config = setup_config(input_rows=options.input_rows,
                       crop_cols=options.crop_cols,
                       crop_deps=options.crop_deps,
                       scale=options.scale,
-                      len_border=12,
+                      len_border=8,
                       len_border_z=0,
                       #len_depth=3,
                       #lung_min=0.7,
@@ -205,9 +205,10 @@ def get_self_learning_data(fold, config):
     dcemr = DynamicMRI(subset_path)
     for phase in dcemr.phases:
         # Multiscale
-        sizes = [244, 256, 272, 288]
+        sizes = [256, 272]
+        #sizes = [256]
         for size in sizes:
-            img_array = phase.restore_original().resize(size, size, phase.image.GetDepth()).numpy().astype(np.float32)
+            img_array = phase.restore_original().resize(size, phase.image.GetHeight() * size // phase.image.GetWidth(), phase.image.GetDepth()).numpy().astype(np.float32)
             #img_array = ((img_array.astype(np.float32)-img_array.min()) * 2.0 / (img_array.max()-img_array.min()))-1.0
             img_array = (img_array-img_array.min()) / (img_array.max()-img_array.min())
             #print(img_array.shape)

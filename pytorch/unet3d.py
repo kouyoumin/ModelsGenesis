@@ -14,28 +14,29 @@ class ContBatchNorm3d(nn.modules.batchnorm._BatchNorm):
         self._check_input_dim(input)
         return F.batch_norm(
             input, self.running_mean, self.running_var, self.weight, self.bias,
-            True, self.momentum, self.eps)
+            self.training, self.momentum, self.eps)
 
 
 class LUConv(nn.Module):
-    def __init__(self, in_chan, out_chan, act):
+    def __init__(self, in_chan, out_chan, act, groupnorm=True):
         super(LUConv, self).__init__()
-        self.conv1 = nn.Conv3d(in_chan, out_chan, kernel_size=3, padding=1)
-        #self.bn1 = ContBatchNorm3d(out_chan)
-        self.gn1 = nn.GroupNorm(8, out_chan)
+        self.conv1 = nn.Conv3d(in_chan, out_chan, kernel_size=3, padding=1, bias=False)
+        if groupnorm:
+            self.norm = nn.GroupNorm(16, out_chan)
+        else:
+            self.norm = ContBatchNorm3d(out_chan)
 
         if act == 'relu':
-            self.activation = nn.ReLU(out_chan)
+            self.activation = nn.ReLU(inplace=True)
         elif act == 'prelu':
-            self.activation = nn.PReLU(out_chan)
+            self.activation = nn.PReLU()
         elif act == 'elu':
             self.activation = nn.ELU(inplace=True)
         else:
             raise
 
     def forward(self, x):
-        #out = self.activation(self.bn1(self.conv1(x)))
-        out = self.activation(self.gn1(self.conv1(x)))
+        out = self.activation(self.norm(self.conv1(x)))
         return out
 
 
@@ -83,14 +84,24 @@ class DownTransition(nn.Module):
         return out, out_before_pool
 
 class UpTransition(nn.Module):
-    def __init__(self, inChans, outChans, depth,act):
+    def __init__(self, inChans, outChans, depth,act, groupnorm=True, interpolate=False):
         super(UpTransition, self).__init__()
         self.depth = depth
-        self.up_conv = nn.ConvTranspose3d(inChans, outChans, kernel_size=2, stride=2)
+        if interpolate:
+            self.up_conv = None
+        else:
+            self.up_conv = nn.ConvTranspose3d(inChans, outChans, kernel_size=2, stride=2, bias=False)
+        if groupnorm:
+            self.norm = nn.GroupNorm(8, outChans)
+        else:
+            self.norm = ContBatchNorm3d(outChans)
         self.ops = _make_nConv(inChans+ outChans//2,depth, act, double_chnnel=True)
 
     def forward(self, x, skip_x):
-        out_up_conv = self.up_conv(x)
+        if self.up_conv is None:
+            out_up_conv = F.interpolate(x, skip_x.size()[2:], mode='trilinear')
+        else:
+            out_up_conv = self.norm(self.up_conv(x))
         concat = torch.cat((out_up_conv,skip_x),1)
         out = self.ops(concat)
         return out
@@ -110,18 +121,20 @@ class OutputTransition(nn.Module):
 class UNet3D(nn.Module):
     # the number of convolutions in each layer corresponds
     # to what is in the actual prototxt, not the intent
-    def __init__(self, n_class=1, act='relu'):
+    def __init__(self, in_channel=1, out_channel=1, act='relu', drop_rate=0.2, interpolate=True):
         super(UNet3D, self).__init__()
+        
+        self.drop_rate = drop_rate
 
-        self.down_tr64 = DownTransition(1,0,act)
+        self.down_tr64 = DownTransition(in_channel,0,act)
         self.down_tr128 = DownTransition(64,1,act)
         self.down_tr256 = DownTransition(128,2,act)
         self.down_tr512 = DownTransition(256,3,act)
 
-        self.up_tr256 = UpTransition(512, 512,2,act)
-        self.up_tr128 = UpTransition(256,256, 1,act)
-        self.up_tr64 = UpTransition(128,128,0,act)
-        self.out_tr = OutputTransition(64, n_class)
+        self.up_tr256 = UpTransition(512, 512,2,act,interpolate=interpolate)
+        self.up_tr128 = UpTransition(256,256, 1,act,interpolate=interpolate)
+        self.up_tr64 = UpTransition(128,128,0,act,interpolate=interpolate)
+        self.out_tr = OutputTransition(64, out_channel)
 
     def forward(self, x):
         self.out64, self.skip_out64 = self.down_tr64(x)
@@ -129,7 +142,10 @@ class UNet3D(nn.Module):
         self.out256,self.skip_out256 = self.down_tr256(self.out128)
         self.out512,self.skip_out512 = self.down_tr512(self.out256)
 
-        self.out_up_256 = self.up_tr256(self.out512,self.skip_out256)
+        if self.training:
+            self.out512 = F.dropout3d(self.out512, self.drop_rate)
+
+        self.out_up_256 = self.up_tr256(self.out512, self.skip_out256)
         self.out_up_128 = self.up_tr128(self.out_up_256, self.skip_out128)
         self.out_up_64 = self.up_tr64(self.out_up_128, self.skip_out64)
         self.out = self.out_tr(self.out_up_64)
