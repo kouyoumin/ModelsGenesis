@@ -68,9 +68,9 @@ def _make_nConv(in_channel, depth, act, double_chnnel=False):
 #         return out
 
 class DownTransition(nn.Module):
-    def __init__(self, in_channel,depth, act):
+    def __init__(self, in_channel, depth, act):
         super(DownTransition, self).__init__()
-        self.ops = _make_nConv(in_channel, depth,act)
+        self.ops = _make_nConv(in_channel, depth, act)
         self.maxpool = nn.MaxPool3d(2)
         self.current_depth = depth
 
@@ -151,3 +151,9 @@ class UNet3D(nn.Module):
         self.out = self.out_tr(self.out_up_64)
 
         return self.out
+
+
+if __name__ == '__main__':
+    import sys
+    model = UNet3D()
+    print(model)

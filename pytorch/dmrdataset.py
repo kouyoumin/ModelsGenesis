@@ -7,7 +7,7 @@ from DynamicMRI import DynamicMRI
 
 
 class DMRDataset(Dataset):
-    def __init__(self, root_path, folds, size=256, crop=160, crop_z=32, train=True):
+    def __init__(self, root_path, folds, size=256, crop=128, crop_z=32, train=True):
         self.root_path = root_path
         self.folds = folds
         self.train = train
@@ -21,7 +21,9 @@ class DMRDataset(Dataset):
             dmr = DynamicMRI(subset_path, annotated_only=True)
             if len(dmr.phases) > 0:
                 phase = dmr.phases[-1]
-                self.imgs.append(np.expand_dims(phase.resize(size, phase.image.GetWidth() * size // phase.image.GetWidth(), phase.image.GetDepth()).numpy().astype(np.float32), axis=0))
+                np_img = np.expand_dims(phase.resize(size, phase.image.GetWidth() * size // phase.image.GetWidth(), phase.image.GetDepth()).numpy().astype(np.float32), axis=0)
+                np_img = (np_img-np_img.min()) / (np_img.max()-np_img.min())
+                self.imgs.append(np_img)
                 #print(dmr.phases[-1].annotation.shape)
                 self.annos.append(transform.resize(dmr.phases[-1].annotation, (8, phase.image.GetDepth(), phase.image.GetHeight() * size // phase.image.GetWidth(), size), order=0))
                 #print(self.imgs[-1].shape, self.annos[-1].shape)
@@ -35,18 +37,23 @@ class DMRDataset(Dataset):
         
         if self.train:            
             #Random crop
-            start_x = np.random.randint(0, self.imgs[idx].shape[3] - self.crop)
-            start_y = np.random.randint(0, self.imgs[idx].shape[2] - self.crop)
-            start_z = np.random.randint(0, self.imgs[idx].shape[1] - self.crop_z)
-
+            start_x = np.random.randint(0, self.imgs[idx].shape[3] - self.crop + 1)
+            start_y = np.random.randint(0, self.imgs[idx].shape[2] - self.crop + 1)
+            if self.crop_z == 0:
+                return torch.from_numpy(self.imgs[idx][:, :, start_y:start_y+self.crop, start_x:start_x+self.crop]).float(), torch.from_numpy(self.annos[idx][:, :, start_y:start_y+self.crop, start_x:start_x+self.crop]).float()
+            else:
+                start_z = np.random.randint(0, self.imgs[idx].shape[1] - self.crop_z)
+                return torch.from_numpy(self.imgs[idx][:, start_z:start_z+self.crop_z, start_y:start_y+self.crop, start_x:start_x+self.crop]).float(), torch.from_numpy(self.annos[idx][:, start_z:start_z+self.crop_z, start_y:start_y+self.crop, start_x:start_x+self.crop]).float()
         else:            
             rs = np.random.RandomState(seed=idx)
             #Random crop
-            start_x = rs.randint(0, self.imgs[idx].shape[3] - self.crop)
-            start_y = rs.randint(0, self.imgs[idx].shape[2] - self.crop)
-            start_z = rs.randint(0, self.imgs[idx].shape[1] - self.crop_z)
-            
-        return torch.from_numpy(self.imgs[idx][:, start_z:start_z+self.crop_z, start_y:start_y+self.crop, start_x:start_x+self.crop]).float(), torch.from_numpy(self.annos[idx][:, start_z:start_z+self.crop_z, start_y:start_y+self.crop, start_x:start_x+self.crop]).float()
+            start_x = rs.randint(0, self.imgs[idx].shape[3] - self.crop + 1)
+            start_y = rs.randint(0, self.imgs[idx].shape[2] - self.crop + 1)
+            if self.crop_z == 0:
+                return torch.from_numpy(self.imgs[idx][:, :, start_y:start_y+self.crop, start_x:start_x+self.crop]).float(), torch.from_numpy(self.annos[idx][:, :, start_y:start_y+self.crop, start_x:start_x+self.crop]).float()
+            else:
+                start_z = rs.randint(0, self.imgs[idx].shape[1] - self.crop_z)
+                return torch.from_numpy(self.imgs[idx][:, start_z:start_z+self.crop_z, start_y:start_y+self.crop, start_x:start_x+self.crop]).float(), torch.from_numpy(self.annos[idx][:, start_z:start_z+self.crop_z, start_y:start_y+self.crop, start_x:start_x+self.crop]).float()
         
 
     def __len__(self):
