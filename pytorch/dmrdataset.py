@@ -52,7 +52,7 @@ class DMRDataset(Dataset):
             if self.crop_z == 0:
                 return torch.from_numpy(self.imgs[idx][:, :, start_y:start_y+self.crop, start_x:start_x+self.crop]).float(), torch.from_numpy(self.annos[idx][:, :, start_y:start_y+self.crop, start_x:start_x+self.crop]).float()
             else:
-                start_z = rs.randint(0, self.imgs[idx].shape[1] - self.crop_z)
+                start_z = rs.randint(0, self.imgs[idx].shape[1] - self.crop_z + 1)
                 return torch.from_numpy(self.imgs[idx][:, start_z:start_z+self.crop_z, start_y:start_y+self.crop, start_x:start_x+self.crop]).float(), torch.from_numpy(self.annos[idx][:, start_z:start_z+self.crop_z, start_y:start_y+self.crop, start_x:start_x+self.crop]).float()
         
 
