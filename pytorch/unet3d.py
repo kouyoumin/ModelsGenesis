@@ -108,20 +108,22 @@ class UpTransition(nn.Module):
 
 
 class OutputTransition(nn.Module):
-    def __init__(self, inChans, n_labels):
+    def __init__(self, inChans, n_labels, sigmoid=True):
 
         super(OutputTransition, self).__init__()
-        self.final_conv = nn.Conv3d(inChans, n_labels, kernel_size=1)
-        self.sigmoid = nn.Sigmoid()
+        modules = [nn.Conv3d(inChans, n_labels, kernel_size=1)]
+        if sigmoid:
+            modules.append(nn.Sigmoid())
+        self.final_conv = nn.Sequential(*modules)
 
     def forward(self, x):
-        out = self.sigmoid(self.final_conv(x))
+        out = self.final_conv(x)
         return out
 
 class UNet3D(nn.Module):
     # the number of convolutions in each layer corresponds
     # to what is in the actual prototxt, not the intent
-    def __init__(self, in_channel=1, out_channel=1, act='relu', drop_rate=0.2, interpolate=True):
+    def __init__(self, in_channel=1, out_channel=1, act='relu', sigmoid=True, drop_rate=0.2, interpolate=True):
         super(UNet3D, self).__init__()
         
         self.drop_rate = drop_rate
@@ -134,7 +136,8 @@ class UNet3D(nn.Module):
         self.up_tr256 = UpTransition(512, 512,2,act,interpolate=interpolate)
         self.up_tr128 = UpTransition(256,256, 1,act,interpolate=interpolate)
         self.up_tr64 = UpTransition(128,128,0,act,interpolate=interpolate)
-        self.out_tr = OutputTransition(64, out_channel)
+        self.out_tr = OutputTransition(64, out_channel, sigmoid)
+
 
     def forward(self, x):
         self.out64, self.skip_out64 = self.down_tr64(x)

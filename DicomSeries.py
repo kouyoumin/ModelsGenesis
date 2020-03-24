@@ -64,7 +64,7 @@ class DicomSeries:
             return None
         annos = []
         for annofile in annofiles:
-            annos.append(cv2.imread(annofile)[:,:,0])
+            annos.append(cv2.imread(annofile)[:self.orig_image.GetHeight(),:self.orig_image.GetWidth(),0])
 
         return np.array(annos)
     
@@ -222,3 +222,7 @@ class DicomSeries:
             writer.SetFileName(os.path.join(os.path.split(self.file_names[i])[0], relative_path, os.path.basename(self.file_names[i])))
             writer.Execute(image_slice)
 
+if __name__ == '__main__':
+    import sys
+    series = DicomSeries(sys.argv[1], sys.argv[2], verbose=True)
+    print(series.get_desc())
