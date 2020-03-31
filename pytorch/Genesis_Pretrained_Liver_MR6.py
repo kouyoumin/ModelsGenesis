@@ -15,7 +15,7 @@ from npydataset import NpyDataset
 from dmrdataset import DMRDataset
 from torch.utils.data import DataLoader
 import unet3d
-from config import models_genesis_config_mr5
+from config import models_genesis_config_mr6
 from dictmod import modify_statedict
 from tqdm import tqdm
 import pickle
@@ -48,7 +48,7 @@ class FocalLoss(nn.Module):
         return focalloss.mean()
 
 
-conf = models_genesis_config_mr5()
+conf = models_genesis_config_mr6()
 conf.display()
 
 if not os.path.isdir(os.path.join(conf.model_path, 'sample', 'train')):
@@ -84,8 +84,10 @@ if os.path.isfile(os.path.join(conf.data, 'train_dataset.pickle')):
 		train_dataset = pickle.load(file)
 		if isinstance(train_dataset, DMRDataset):
 			print('Loaded train_dataset from pickle file (%s)' % (os.path.join(conf.data, 'train_dataset.pickle')))
+			train_dataset.crop = conf.input_rows
+			train_dataset.crop_z = conf.input_deps
 if train_dataset is None:
-	train_dataset = DMRDataset(os.path.join(conf.data), conf.train_fold, crop=160, crop_z=32, train=True)
+	train_dataset = DMRDataset(os.path.join(conf.data), conf.train_fold, crop=conf.input_rows, crop_z=conf.input_deps, train=True)
 	with open(os.path.join(conf.data, 'train_dataset.pickle'), 'wb') as file:
 		pickle.dump(train_dataset, file)
 		file.close()
@@ -98,7 +100,7 @@ if os.path.isfile(os.path.join(conf.data, 'valid_dataset.pickle')):
 		if isinstance(valid_dataset, DMRDataset):
 			print('Loaded valid_dataset from pickle file (%s)' % (os.path.join(conf.data, 'valid_dataset.pickle')))
 if valid_dataset is None:
-	valid_dataset = DMRDataset(os.path.join(conf.data), conf.valid_fold, crop=0, train=False)
+	valid_dataset = DMRDataset(os.path.join(conf.data), conf.valid_fold, sizes=(256,), crop=0, train=False)
 	with open(os.path.join(conf.data, 'valid_dataset.pickle'), 'wb') as file:
 		pickle.dump(valid_dataset, file)
 		file.close()
@@ -108,7 +110,7 @@ valid_loader = DataLoader(valid_dataset, batch_size=1, num_workers=2)
 
 device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-model = unet3d.UNet3D(in_channel=1, out_channel=6, sigmoid=False)
+model = unet3d.UNet3D(in_channel=1, out_channel=conf.nb_class, sigmoid=False)
 #model = nn.DataParallel(model, device_ids = [i for i in range(torch.cuda.device_count())])
 model.to(device)
 
@@ -127,25 +129,28 @@ print("Total CUDA devices: ", torch.cuda.device_count())
 summary(model, (1, conf.input_deps, conf.input_cols, conf.input_rows), batch_size=conf.batch_size)
 #criterion = nn.MSELoss()
 #criterion = FocalLoss()
-weight = torch.ones((6,32,160,160))
-weight[1:,:,:,:] = 2.0
-weight#.to(device)
+#weight = torch.ones((conf.nb_class,32,conf.input_rows,conf.input_rows))
+#weight[:-1,:,:,:] = 5.0
+#weight[-1,:,:,:] = 2.0
+#weight = torch.Tensor([2.0, 2.0, 2.0, 2.0, 2.0, 1.0])
+#weight.to(device)
+weight = None
 
 #criterion = nn.BCEWithLogitsLoss(pos_weight=weight).to(device)
-criterion = FocalLoss(pos_weight=weight)#.to(device)
+criterion = FocalLoss(pos_weight=weight).to(device)
 criterion_val = nn.BCEWithLogitsLoss().to(device)
 
 if conf.optimizer == "sgd":
     #optimizer = torch.optim.SGD(model.parameters(), conf.lr, momentum=0.9, weight_decay=0.0001, nesterov=True)
     optimizer = torch.optim.SGD([
-                {'params': model.up_tr256.parameters(), 'lr': 0.1*conf.lr},
-				{'params': model.up_tr128.parameters(), 'lr': 0.2*conf.lr},
-				{'params': model.up_tr64.parameters(), 'lr': 0.5*conf.lr},
 				{'params': model.out_tr.parameters()},
-                {'params': model.down_tr64.parameters(), 'lr': 0.05*conf.lr},
-                {'params': model.down_tr128.parameters(), 'lr': 0.05*conf.lr},
-                {'params': model.down_tr256.parameters(), 'lr': 0.05*conf.lr},
-                {'params': model.down_tr512.parameters(), 'lr': 0.05*conf.lr}
+                {'params': model.up_tr256.parameters(), 'lr': 0.5*conf.lr},
+				{'params': model.up_tr128.parameters(), 'lr': 0.5*conf.lr},
+				{'params': model.up_tr64.parameters(), 'lr': 0.5*conf.lr},
+                {'params': model.down_tr64.parameters(), 'lr': 0.1*conf.lr},
+                {'params': model.down_tr128.parameters(), 'lr': 0.1*conf.lr},
+                {'params': model.down_tr256.parameters(), 'lr': 0.1*conf.lr},
+                {'params': model.down_tr512.parameters(), 'lr': 0.1*conf.lr}
             ], conf.lr, momentum=0.9, weight_decay=0.0001, nesterov=True)
 elif conf.optimizer == "adam":
     optimizer = torch.optim.Adam(model.parameters(), conf.lr)
@@ -153,7 +158,7 @@ else:
     raise
 
 #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=int(conf.patience * 0.8), gamma=0.5)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, verbose=True)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
 
 # to track the training loss as the model trains
 train_losses = []
@@ -182,8 +187,8 @@ if conf.weights != None:
 	print("Resuming from ",conf.weights)
 elif conf.pretrained != None:
 	checkpoint=torch.load(conf.pretrained, map_location='cpu')
-	converted_dict = modify_statedict(checkpoint['state_dict'], 'down_tr64.ops.0.conv1', 1, 'out_tr.final_conv', 6)
-	converted_dict = modify_statedict(checkpoint['state_dict'], 'down_tr64.ops.0.conv1', 1, 'out_tr.final_conv.0', 6, rename_final=True)
+	#converted_dict = modify_statedict(checkpoint['state_dict'], 'down_tr64.ops.0.conv1', 1, 'out_tr.final_conv', conf.nb_class)
+	converted_dict = modify_statedict(checkpoint['state_dict'], 'down_tr64.ops.0.conv1', 1, 'out_tr.final_conv.0', conf.nb_class, rename_final=True)
 	model.load_state_dict(converted_dict)
 	#optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 	#intial_epoch=checkpoint['epoch']
@@ -201,18 +206,21 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 	if isinstance(scheduler, torch.optim.lr_scheduler.StepLR):
 		scheduler.step(epoch)
 	model.train()
-	print('Learning rate: %f' % (scheduler._last_lr[0]))
+	print('Learning rate: %r' % (scheduler._last_lr))
 	#for iteration in range(int(x_train.shape[0]//conf.batch_size)):
 	for i in range(1):
 		for iteration, (image, gt) in enumerate(train_loader):
-			gt = gt[:, 2:, :, :, :]
+			target = gt[:, 8-conf.nb_class:, :, :, :]
+			#target=gt[:, 6:, :, :, :]
+			#target[:,0,:,:,:] = torch.sum(gt[:, 2:-1, :, :, :], 1, keepdim=False).clamp_(0.0,1.0)
+			#assert(target[:,0,...].max() == 1.0)
 			#gt2 = gt[:, 6:, :, :, :]
 			#gt2[:, 5, :, :, :] = torch.sum(gt[:,:6,:,:,:], dim=1)
-			image,gt = image.to(device), gt.to(device)
+			image,target = image.to(device), target.to(device)
 			#gt = np.repeat(gt,conf.nb_class,axis=1)
 			#gt = gt.repeat(1, conf.nb_class, 1, 1, 1)
 			pred=model(image)
-			loss = criterion(pred,gt)
+			loss = criterion(pred, target)
 			optimizer.zero_grad()
 			loss.backward()
 			optimizer.step()
@@ -224,20 +232,21 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 		#if True:
 			x = image[0].cpu().numpy()
 			#y = gt[0].cpu().numpy()
-			y = (gt[0][0].cpu()>0.5).float().numpy() * (2**2)/255
-			for j in range(1,6):
-				y += (gt[0][j].cpu()>0.5).float().numpy() * (2**(j+2))/255
+			y = (target[0][0].cpu()>0.5).float().numpy() * (2**(0+(8-conf.nb_class)))/255
+			for j in range(1, conf.nb_class):
+				y += (target[0][j].cpu()>0.5).float().numpy() * (2**(j+(8-conf.nb_class)))/255
 
 			#p = (pred[0][0].detach().cpu()>0.5).float().numpy() * (2**2)/255
-			p = (torch.sigmoid(pred[0][0].detach()).cpu()>0.5).float().numpy() * (2**2)/255
-			for j in range(1,6):
+			p = (torch.sigmoid(pred[0][0].detach()).cpu()>0.5).float().numpy() * (2**(0+(8-conf.nb_class)))/255
+			#for j in range(1,6):
+			for j in range(1, conf.nb_class):
 				#p += (pred[0][j].detach().cpu()>0.5).float().numpy() * (2**(j+2))/255
-				p += (torch.sigmoid(pred[0][j].detach()).cpu()>0.5).float().numpy() * (2**(j+2))/255
+				p += (torch.sigmoid(pred[0][j].detach()).cpu()>0.5).float().numpy() * (2**(j+(8-conf.nb_class)))/255
 
-			sample_1 = np.concatenate((x[0,2*x.shape[1]//6,:,:], y[2*x.shape[1]//6,:,:], p[2*x.shape[1]//6,:,:]), axis=0)
-			sample_2 = np.concatenate((x[0,3*x.shape[1]//6,:,:], y[3*x.shape[1]//6,:,:], p[3*x.shape[1]//6,:,:]), axis=0)
-			sample_3 = np.concatenate((x[0,4*x.shape[1]//6,:,:], y[4*x.shape[1]//6,:,:], p[4*x.shape[1]//6,:,:]), axis=0)
-			sample_4 = np.concatenate((x[0,5*x.shape[1]//6,:,:], y[5*x.shape[1]//6,:,:], p[5*x.shape[1]//6,:,:]), axis=0)
+			sample_1 = np.concatenate((x[0,2*x.shape[1]//8,:,:], y[2*x.shape[1]//8,:,:], p[2*x.shape[1]//8,:,:]), axis=0)
+			sample_2 = np.concatenate((x[0,3*x.shape[1]//8,:,:], y[3*x.shape[1]//8,:,:], p[3*x.shape[1]//8,:,:]), axis=0)
+			sample_3 = np.concatenate((x[0,4*x.shape[1]//8,:,:], y[4*x.shape[1]//8,:,:], p[4*x.shape[1]//8,:,:]), axis=0)
+			sample_4 = np.concatenate((x[0,5*x.shape[1]//8,:,:], y[5*x.shape[1]//8,:,:], p[5*x.shape[1]//8,:,:]), axis=0)
 			final_sample = np.concatenate((sample_1, sample_2, sample_3, sample_4), axis=1)
 			final_sample = final_sample * 255.0
 			final_sample = final_sample.astype(np.uint8)
@@ -250,10 +259,12 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 		print("validating....")
 		#for i in range(int(x_valid.shape[0]//conf.batch_size)):
 		for i, (image,gt) in enumerate(valid_loader):
-			image=image.to(device)
-			gt=gt[:, 2:, :, :, :].to(device)
+			target = gt[:, 2:, :, :, :]
+			#target=gt[:, 6:, :, :, :].to(device)
+			#target[:,0,:,:,:] = torch.sum(gt[:, 2:-1, :, :, :], 1, keepdim=False).clamp_(0.0,1.0)
+			image,target = image.to(device), target.to(device)
 			pred=model(image)
-			loss = criterion_val(pred,gt)
+			loss = criterion_val(pred, target)
 			valid_losses.append(loss.item())
 
 			if (i + 1) % 1 == 0:
@@ -262,21 +273,23 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 				sys.stdout.flush()
 				x = image[0].cpu().numpy()
 				#y = gt[0].cpu().numpy()
-				y = (gt[0][0].cpu()>0.5).float().numpy() * (2**2)/255
-				for j in range(1,6):
-					y += (gt[0][j].cpu()>0.5).float().numpy() * (2**(j+2))/255
+				y = (target[0][0].cpu()>0.5).float().numpy() * (2**(0+(8-conf.nb_class)))/255
+				#for j in range(1,6):
+				for j in range(1, conf.nb_class):
+					y += (target[0][j].cpu()>0.5).float().numpy() * (2**(j+(8-conf.nb_class)))/255
 				
 				#p = (pred[0][0].detach().cpu()>0.5).float().numpy() * (2**2)/255
-				p = (torch.sigmoid(pred[0][0]).cpu()>0.5).float().numpy() * (2**2)/255
-				for j in range(1,6):
+				p = (torch.sigmoid(pred[0][0]).cpu()>0.5).float().numpy() * (2**(0+(8-conf.nb_class)))/255
+				#for j in range(1,6):
+				for j in range(1, conf.nb_class):
 					#p += (pred[0][j].cpu()>0.5).float().numpy() * (2**(j+2))/255
-					p += (torch.sigmoid(pred[0][j]).cpu()>0.5).float().numpy() * (2**(j+2))/255
+					p += (torch.sigmoid(pred[0][j]).cpu()>0.5).float().numpy() * (2**(j+(8-conf.nb_class)))/255
 				
 				#p = (pred[0].cpu()>0.5).float().numpy()
-				sample_1 = np.concatenate((x[0,2*x.shape[1]//6,:,:], y[2*x.shape[1]//6,:,:], p[2*x.shape[1]//6,:,:]), axis=0)
-				sample_2 = np.concatenate((x[0,3*x.shape[1]//6,:,:], y[3*x.shape[1]//6,:,:], p[3*x.shape[1]//6,:,:]), axis=0)
-				sample_3 = np.concatenate((x[0,4*x.shape[1]//6,:,:], y[4*x.shape[1]//6,:,:], p[4*x.shape[1]//6,:,:]), axis=0)
-				sample_4 = np.concatenate((x[0,5*x.shape[1]//6,:,:], y[5*x.shape[1]//6,:,:], p[5*x.shape[1]//6,:,:]), axis=0)
+				sample_1 = np.concatenate((x[0,2*x.shape[1]//8,:,:], y[2*x.shape[1]//8,:,:], p[2*x.shape[1]//8,:,:]), axis=0)
+				sample_2 = np.concatenate((x[0,3*x.shape[1]//8,:,:], y[3*x.shape[1]//8,:,:], p[3*x.shape[1]//8,:,:]), axis=0)
+				sample_3 = np.concatenate((x[0,4*x.shape[1]//8,:,:], y[4*x.shape[1]//8,:,:], p[4*x.shape[1]//8,:,:]), axis=0)
+				sample_4 = np.concatenate((x[0,5*x.shape[1]//8,:,:], y[5*x.shape[1]//8,:,:], p[5*x.shape[1]//8,:,:]), axis=0)
 				final_sample = np.concatenate((sample_1, sample_2, sample_3, sample_4), axis=1)
 				final_sample = final_sample * 255.0
 				final_sample = final_sample.astype(np.uint8)

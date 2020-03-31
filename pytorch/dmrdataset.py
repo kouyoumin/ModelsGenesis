@@ -4,10 +4,11 @@ import numpy as np
 from skimage import transform
 import os
 from DynamicMRI import DynamicMRI
+from utils import gamma_augmentation
 
 
 class DMRDataset(Dataset):
-    def __init__(self, root_path, folds, size=256, crop=128, crop_z=32, train=True):
+    def __init__(self, root_path, folds, sizes=(248, 256, 264, 272, 280, 288), crop=128, crop_z=32, train=True):
         self.root_path = root_path
         self.folds = []
         self.train = train
@@ -21,20 +22,21 @@ class DMRDataset(Dataset):
             dmr = DynamicMRI(subset_path, annotated_only=True)
             if len(dmr.phases) > 0:
                 phase = dmr.phases[-1]
-                np_img = np.expand_dims(phase.resize(size, phase.image.GetHeight() * size // phase.image.GetWidth(), phase.image.GetDepth()).numpy().astype(np.float32), axis=0)
-                np_img = (np_img-np_img.min()) / (np_img.max()-np_img.min())
-                self.imgs.append(np_img)
-                #print(dmr.phases[-1].annotation.shape)
-                self.annos.append(transform.resize(dmr.phases[-1].annotation, (8, phase.image.GetDepth(), phase.image.GetHeight() * size // phase.image.GetWidth(), size), order=0))
-                self.folds.append(fold)
-                #print(self.imgs[-1].shape, self.annos[-1].shape)
-                assert(self.imgs[-1].shape[1:] == self.annos[-1].shape[1:])
-                assert(self.annos[-1].min() == 0)
-                #print(dmr.phases[-1].annotation.max(), self.annos[-1].max())
-                assert(self.annos[-1].max() == 1)
-                print('%02d: %s %s %s' % (fold, phase.get_desc(), phase.orig_image.GetSize(), str(self.imgs[-1].shape)))
-                for i in range(8):
-                    print('Mask %d: max=%d, min=%d' % (i, self.annos[-1][i].max(), self.annos[-1][i].min()))
+                for size in sizes:
+                    np_img = np.expand_dims(phase.restore_original().resize(size, phase.image.GetHeight() * size // phase.image.GetWidth(), phase.image.GetDepth()).numpy().astype(np.float32), axis=0)
+                    np_img = (np_img-np_img.min()) / (np_img.max()-np_img.min())
+                    self.imgs.append(np_img)
+                    #print(dmr.phases[-1].annotation.shape)
+                    self.annos.append(transform.resize(dmr.phases[-1].annotation, (8, phase.image.GetDepth(), phase.image.GetHeight() * size // phase.image.GetWidth(), size), order=0))
+                    self.folds.append(fold)
+                    #print(self.imgs[-1].shape, self.annos[-1].shape)
+                    assert(self.imgs[-1].shape[1:] == self.annos[-1].shape[1:])
+                    assert(self.annos[-1].min() == 0)
+                    #print(dmr.phases[-1].annotation.max(), self.annos[-1].max())
+                    assert(self.annos[-1].max() == 1)
+                    print('%02d: %s %s %s' % (fold, phase.get_desc(), phase.orig_image.GetSize(), str(self.imgs[-1].shape)))
+                    for i in range(8):
+                        print('Mask %d: max=%d, min=%d' % (i, self.annos[-1][i].max(), self.annos[-1][i].min()))
 
 
     def __getitem__(self, idx):
@@ -47,10 +49,10 @@ class DMRDataset(Dataset):
             start_x = np.random.randint(0, self.imgs[idx].shape[3] - self.crop + 1)
             start_y = np.random.randint(0, self.imgs[idx].shape[2] - self.crop + 1)
             if self.crop_z == 0:
-                return torch.from_numpy(self.imgs[idx][:, :, start_y:start_y+self.crop, start_x:start_x+self.crop]).float(), torch.from_numpy(self.annos[idx][:, :, start_y:start_y+self.crop, start_x:start_x+self.crop]).float()
+                return torch.from_numpy(gamma_augmentation(self.imgs[idx][:, :, start_y:start_y+self.crop, start_x:start_x+self.crop])).float(), torch.from_numpy(self.annos[idx][:, :, start_y:start_y+self.crop, start_x:start_x+self.crop]).float()
             else:
                 start_z = np.random.randint(0, self.imgs[idx].shape[1] - self.crop_z + 1)
-                return torch.from_numpy(self.imgs[idx][:, start_z:start_z+self.crop_z, start_y:start_y+self.crop, start_x:start_x+self.crop]).float(), torch.from_numpy(self.annos[idx][:, start_z:start_z+self.crop_z, start_y:start_y+self.crop, start_x:start_x+self.crop]).float()
+                return torch.from_numpy(gamma_augmentation(self.imgs[idx][:, start_z:start_z+self.crop_z, start_y:start_y+self.crop, start_x:start_x+self.crop])).float(), torch.from_numpy(self.annos[idx][:, start_z:start_z+self.crop_z, start_y:start_y+self.crop, start_x:start_x+self.crop]).float()
         else:            
             rs = np.random.RandomState(seed=idx)
             #Random crop

@@ -88,9 +88,12 @@ def nonlinear_transformation(x, prob=0.5, random_state=None):
     nonlinear_x = np.interp(x, xvals, yvals)
     return nonlinear_x
 
-def gamma_augmentation(x, range=(0.7, 1.5), random_state=None):
+def gamma_augmentation(x, range=(0.7, 1.3), random_state=None):
     if not isinstance(range, tuple):
         return x
+    
+    assert(x.min() >= 0.0)
+    assert(x.max() <= 1.0)
     if isinstance(random_state, np.random.RandomState):
         gamma = random_state.uniform(*range)
         if random_state.random() < 0.5:
