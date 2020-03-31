@@ -208,7 +208,7 @@ class models_genesis_config_mr2:
     save_samples = "png"
     nb_epoch = 10000
     patience = 50
-    lr = 0.2
+    lr = 0.1
 
     # image deformation
     nonlinear_rate = 0.9

@@ -214,11 +214,7 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 			#target=gt[:, 6:, :, :, :]
 			#target[:,0,:,:,:] = torch.sum(gt[:, 2:-1, :, :, :], 1, keepdim=False).clamp_(0.0,1.0)
 			#assert(target[:,0,...].max() == 1.0)
-			#gt2 = gt[:, 6:, :, :, :]
-			#gt2[:, 5, :, :, :] = torch.sum(gt[:,:6,:,:,:], dim=1)
 			image,target = image.to(device), target.to(device)
-			#gt = np.repeat(gt,conf.nb_class,axis=1)
-			#gt = gt.repeat(1, conf.nb_class, 1, 1, 1)
 			pred=model(image)
 			loss = criterion(pred, target)
 			optimizer.zero_grad()
@@ -231,17 +227,13 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 				sys.stdout.flush()
 		#if True:
 			x = image[0].cpu().numpy()
-			#y = gt[0].cpu().numpy()
 			y = (target[0][0].cpu()>0.5).float().numpy() * (2**(0+(8-conf.nb_class)))/255
 			for j in range(1, conf.nb_class):
 				y += (target[0][j].cpu()>0.5).float().numpy() * (2**(j+(8-conf.nb_class)))/255
 
-			#p = (pred[0][0].detach().cpu()>0.5).float().numpy() * (2**2)/255
-			p = (torch.sigmoid(pred[0][0].detach()).cpu()>0.5).float().numpy() * (2**(0+(8-conf.nb_class)))/255
-			#for j in range(1,6):
+			p = (pred[0][0].detach().sigmoid().cpu()>0.5).float().numpy() * (2**(0+(8-conf.nb_class)))/255
 			for j in range(1, conf.nb_class):
-				#p += (pred[0][j].detach().cpu()>0.5).float().numpy() * (2**(j+2))/255
-				p += (torch.sigmoid(pred[0][j].detach()).cpu()>0.5).float().numpy() * (2**(j+(8-conf.nb_class)))/255
+				p += (pred[0][j].detach().sigmoid().cpu()>0.5).float().numpy() * (2**(j+(8-conf.nb_class)))/255
 
 			sample_1 = np.concatenate((x[0,2*x.shape[1]//8,:,:], y[2*x.shape[1]//8,:,:], p[2*x.shape[1]//8,:,:]), axis=0)
 			sample_2 = np.concatenate((x[0,3*x.shape[1]//8,:,:], y[3*x.shape[1]//8,:,:], p[3*x.shape[1]//8,:,:]), axis=0)
@@ -251,7 +243,6 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 			final_sample = final_sample * 255.0
 			final_sample = final_sample.astype(np.uint8)
 			file_name = str(epoch+1)+'_'+str(iteration+1)+'.png'
-			#file_name = str(epoch+1)+'_'+''.join([random.choice(string.ascii_letters + string.digits) for n in range(10)])+'.png'
 			cv2.imwrite(os.path.join(conf.model_path, 'sample', 'train', file_name), final_sample)
 
 	with torch.no_grad():
@@ -272,20 +263,14 @@ for epoch in range(intial_epoch,conf.nb_epoch):
 				.format(epoch + 1, conf.nb_epoch, i + 1, np.average(valid_losses)))
 				sys.stdout.flush()
 				x = image[0].cpu().numpy()
-				#y = gt[0].cpu().numpy()
 				y = (target[0][0].cpu()>0.5).float().numpy() * (2**(0+(8-conf.nb_class)))/255
-				#for j in range(1,6):
 				for j in range(1, conf.nb_class):
 					y += (target[0][j].cpu()>0.5).float().numpy() * (2**(j+(8-conf.nb_class)))/255
 				
-				#p = (pred[0][0].detach().cpu()>0.5).float().numpy() * (2**2)/255
-				p = (torch.sigmoid(pred[0][0]).cpu()>0.5).float().numpy() * (2**(0+(8-conf.nb_class)))/255
-				#for j in range(1,6):
+				p = (pred[0][0].sigmoid().cpu()>0.5).float().numpy() * (2**(0+(8-conf.nb_class)))/255
 				for j in range(1, conf.nb_class):
-					#p += (pred[0][j].cpu()>0.5).float().numpy() * (2**(j+2))/255
-					p += (torch.sigmoid(pred[0][j]).cpu()>0.5).float().numpy() * (2**(j+(8-conf.nb_class)))/255
+					p += (pred[0][j].sigmoid().cpu()>0.5).float().numpy() * (2**(j+(8-conf.nb_class)))/255
 				
-				#p = (pred[0].cpu()>0.5).float().numpy()
 				sample_1 = np.concatenate((x[0,2*x.shape[1]//8,:,:], y[2*x.shape[1]//8,:,:], p[2*x.shape[1]//8,:,:]), axis=0)
 				sample_2 = np.concatenate((x[0,3*x.shape[1]//8,:,:], y[3*x.shape[1]//8,:,:], p[3*x.shape[1]//8,:,:]), axis=0)
 				sample_3 = np.concatenate((x[0,4*x.shape[1]//8,:,:], y[4*x.shape[1]//8,:,:], p[4*x.shape[1]//8,:,:]), axis=0)

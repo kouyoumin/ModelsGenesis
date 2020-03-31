@@ -27,7 +27,7 @@ class DMRDataset(Dataset):
                     np_img = (np_img-np_img.min()) / (np_img.max()-np_img.min())
                     self.imgs.append(np_img)
                     #print(dmr.phases[-1].annotation.shape)
-                    self.annos.append(transform.resize(dmr.phases[-1].annotation, (8, phase.image.GetDepth(), phase.image.GetHeight() * size // phase.image.GetWidth(), size), order=0))
+                    self.annos.append(transform.resize(dmr.phases[-1].annotation, (8, phase.image.GetDepth(), phase.image.GetHeight() * size // phase.image.GetWidth(), size), order=1))
                     self.folds.append(fold)
                     #print(self.imgs[-1].shape, self.annos[-1].shape)
                     assert(self.imgs[-1].shape[1:] == self.annos[-1].shape[1:])
